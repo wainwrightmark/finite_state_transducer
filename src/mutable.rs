@@ -4,7 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::character::*;
+use crate::{character::*, slab_index::SlabIndex};
 
 #[derive(Debug, PartialEq)]
 pub struct WordAutomata<C: AutomataCharacter> {
@@ -133,7 +133,7 @@ impl<C: AutomataCharacter> WordAutomata<C> {
         }
     }
 
-    pub fn contains(&self, iter: impl Iterator<Item = C>) -> bool {
+    pub fn contains(&self, iter: impl IntoIterator<Item = C>) -> bool {
         let mut state = self.slab.first().unwrap();
 
         for c in iter {
@@ -148,7 +148,7 @@ impl<C: AutomataCharacter> WordAutomata<C> {
 
 impl<C: AutomataCharacter> WordAutomata<C> {
     /// Returns true if the word was added
-    pub fn add_word(&mut self, iterator: impl Iterator<Item = C>) -> bool {
+    pub fn add_word(&mut self, iterator: impl IntoIterator<Item = C>) -> bool {
         let mut state_index: SlabIndex = SlabIndex(0);
 
         for c in iterator {
@@ -256,37 +256,47 @@ impl<C: AutomataCharacter> WordAutomata<C> {
         };
     }
 
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![];
+        let mut mappings: BTreeMap<u32, u32> = Default::default(); //todo replace with vecs
+        let mut next_key = 0u32;
 
-    // fn to_bytes()-> Vec<u8>{
-    //     let mut bytes = vec![];
+        // const SET_BYTES: u32 = 4;
+        // const KEY_BYTES: u32 = 4;
+        for (old_key, slab) in self.slab.iter().enumerate() {
+            mappings.insert(old_key as u32, next_key);
 
-    //     bytes
+            let size = 1 + (slab.map.len() as u32);
+            next_key += size
+        }
 
-    // }
+        for state in self.slab.iter() {
+            let mut set = const_sized_bit_set::BitSet32::EMPTY;
+            if state.can_terminate {
+                set.insert_const(31);
+            }
+            for key in state.map.keys() {
+                set.insert_const(*key);
+            }
+            bytes.extend_from_slice(&set.inner_const().to_le_bytes());
 
-}
+            for slab_index in state.map.values() {
+                let mapped = *mappings.get(&slab_index.0).unwrap();
+                bytes.extend_from_slice(&mapped.to_le_bytes());
+            }
+        }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SlabIndex(pub u32);
-
-impl From<usize> for SlabIndex {
-    fn from(value: usize) -> Self {
-        Self(value as u32)
-    }
-}
-
-impl SlabIndex {
-    pub fn increment(&mut self) {
-        self.0 += 1;
+        bytes
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::{
         convert::Infallible,
         fmt::{Display, Write},
         str::FromStr,
+        vec,
     };
 
     use super::*;
@@ -315,8 +325,7 @@ mod tests {
         assert!(wa.contains(mark.iter()));
     }
 
-    #[test]
-    pub fn test_iter() {
+    fn make_planets() -> WordAutomata<Character> {
         let mut wa: WordAutomata<Character> = WordAutomata::default();
 
         for word in [
@@ -326,8 +335,12 @@ mod tests {
             let word = CharVec::from_str(word).unwrap();
             wa.add_word(word.iter());
         }
+        wa
+    }
 
-        //let wa = wa.compress();
+    #[test]
+    pub fn test_iter() {
+        let wa = make_planets();
 
         let v: Vec<_> = wa.iter().collect();
 
@@ -341,21 +354,11 @@ mod tests {
 
     #[test]
     pub fn test_compress_then_iter() {
-        let mut wa: WordAutomata<Character> = WordAutomata::default();
+        let wa = make_planets();
 
-        for word in [
-            "Earth", "Mars", "Neptune", "Pluto", "Saturn", "Uranus", "Venus", "Some", "Random",
-            "Word",
-        ] {
-            let word = CharVec::from_str(word).unwrap();
-            wa.add_word(word.iter());
-        }
-
-        assert_eq!(wa.slab.len(),52);
-
+        assert_eq!(wa.slab.len(), 52);
         let wa = wa.compress();
-
-        assert_eq!(wa.slab.len(),38);
+        assert_eq!(wa.slab.len(), 38);
 
         let v: Vec<_> = wa.iter().collect();
 
@@ -367,38 +370,32 @@ mod tests {
         );
     }
 
-    // #[test]
-    // pub fn test_on_grid() {
-    //     let mut wa = WordAutomata::default();
+    #[test]
+    pub fn test_to_bytes() {
+        let wa = make_planets();
+        let wa = wa.compress();
+        let bytes = wa.to_bytes();
 
-    //     for word in [
-    //         "Earth", "Mars", "Neptune", "Pluto", "Saturn", "Uranus", "Venus", "Some", "Random",
-    //         "Word",
-    //     ] {
-    //         let word = RawWord::from_str(word).unwrap();
-    //         wa.add_word(&word);
-    //     }
-
-    //     assert_eq!(wa.slab.len(), 52);
-    //     //println!("Uncompressed - {} states", wa.slab.len());
-    //     let wa = wa.compress();
-    //     //println!("Compressed - {} states", wa.slab.len());
-    //     assert_eq!(wa.slab.len(), 38);
-
-    //     let grid = try_make_grid("VENMOUAULTRSHPEN").unwrap();
-
-    //     let grid_words = wa.find_all_words(&grid);
-
-    //     let found_words = grid_words
-    //         .iter()
-    //         .map(|x| x.iter().map(|c| c.as_char()).join(""))
-    //         .join(", ");
-
-    //     assert_eq!(
-    //         found_words,
-    //         "EARTH, MARS, NEPTUNE, PLUTO, SATURN, URANUS, VENUS", //Should be in alphabetical order
-    //     )
-    // }
+        assert_eq!(
+            bytes,
+            vec![
+                16, 176, 118, 0, 10, 0, 0, 0, 19, 0, 0, 0, 25, 0, 0, 0, 37, 0, 0, 0, 68, 0, 0, 0,
+                45, 0, 0, 0, 56, 0, 0, 0, 64, 0, 0, 0, 78, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0,
+                2, 0, 14, 0, 0, 0, 0, 0, 8, 0, 16, 0, 0, 0, 128, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0,
+                128, 1, 0, 0, 0, 21, 0, 0, 0, 0, 0, 2, 0, 23, 0, 0, 0, 0, 0, 4, 0, 18, 0, 0, 0, 16,
+                0, 0, 0, 27, 0, 0, 0, 0, 128, 0, 0, 29, 0, 0, 0, 0, 0, 8, 0, 31, 0, 0, 0, 0, 0, 16,
+                0, 33, 0, 0, 0, 0, 32, 0, 0, 35, 0, 0, 0, 16, 0, 0, 0, 18, 0, 0, 0, 0, 8, 0, 0, 39,
+                0, 0, 0, 0, 0, 16, 0, 41, 0, 0, 0, 0, 0, 8, 0, 43, 0, 0, 0, 0, 64, 0, 0, 18, 0, 0,
+                0, 1, 64, 0, 0, 48, 0, 0, 0, 66, 0, 0, 0, 0, 0, 8, 0, 50, 0, 0, 0, 0, 0, 16, 0, 52,
+                0, 0, 0, 0, 0, 2, 0, 54, 0, 0, 0, 0, 32, 0, 0, 18, 0, 0, 0, 0, 0, 2, 0, 58, 0, 0,
+                0, 1, 0, 0, 0, 60, 0, 0, 0, 0, 32, 0, 0, 62, 0, 0, 0, 0, 0, 16, 0, 23, 0, 0, 0, 16,
+                0, 0, 0, 60, 0, 0, 0, 0, 16, 0, 0, 35, 0, 0, 0, 1, 0, 0, 0, 70, 0, 0, 0, 0, 32, 0,
+                0, 72, 0, 0, 0, 8, 0, 0, 0, 74, 0, 0, 0, 0, 64, 0, 0, 76, 0, 0, 0, 0, 16, 0, 0, 18,
+                0, 0, 0, 0, 64, 0, 0, 80, 0, 0, 0, 0, 0, 2, 0, 82, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0,
+                0
+            ]
+        )
+    }
 
     pub struct CharVec(Vec<Character>);
 
