@@ -16,7 +16,7 @@ impl<C: AutomataCharacter> std::ops::Index<SlabIndex> for MutableAutomata<C> {
     type Output = State;
 
     fn index(&self, index: SlabIndex) -> &Self::Output {
-        &self.slab.index(index.0 as usize)
+        self.slab.index(index.0 as usize)
     }
 }
 
@@ -35,19 +35,10 @@ impl<C: AutomataCharacter> Default for MutableAutomata<C> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Default)]
 pub struct State {
     pub map: BTreeMap<u32, SlabIndex>,
     pub can_terminate: bool,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            map: Default::default(),
-            can_terminate: Default::default(),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -57,9 +48,9 @@ struct AutomataIterator<'a, C: AutomataCharacter> {
     character_stack: Vec<C>,
 }
 
-impl<'a, C: AutomataCharacter> FusedIterator for AutomataIterator<'a, C> {}
+impl<C: AutomataCharacter> FusedIterator for AutomataIterator<'_, C> {}
 
-impl<'a, C: AutomataCharacter> Iterator for AutomataIterator<'a, C> {
+impl<C: AutomataCharacter> Iterator for AutomataIterator<'_, C> {
     type Item = C::String;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -92,7 +83,7 @@ impl<'a, C: AutomataCharacter> Iterator for AutomataIterator<'a, C> {
 
             if let Some(character) = self.character_stack.get(self.index_stack.len() - 1) {
                 if let Some(nsi) = top.map.get(&character.to_u32()) {
-                    self.index_stack.push((*nsi).into());
+                    self.index_stack.push(*nsi);
                 } else {
                     increment_last(&mut self.index_stack, &mut self.character_stack);
                 }
@@ -126,7 +117,7 @@ impl<'a, C: AutomataCharacter> Iterator for AutomataIterator<'a, C> {
 
 #[allow(dead_code)]
 impl<C: AutomataCharacter> MutableAutomata<C> {
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = C::String> + FusedIterator + use<'a, C> {
+    pub fn iter(&self) -> impl FusedIterator<Item = C::String> + use<'_, C> {
         AutomataIterator {
             automata: self,
             index_stack: vec![SlabIndex(0)],
@@ -156,7 +147,7 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
             let c = c.to_u32();
             match self[state_index].map.get(&c) {
                 Some(a) => {
-                    state_index = (*a).into();
+                    state_index = *a;
                 }
                 None => {
                     let new_state = State::default();
@@ -164,7 +155,7 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
                     self.slab.push(new_state);
 
                     self[state_index].map.insert(c, new_state_index);
-                    state_index = new_state_index.into();
+                    state_index = new_state_index;
                 }
             }
         }
@@ -251,10 +242,10 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
             }
         }
 
-        return MutableAutomata {
+        MutableAutomata {
             slab: new_slab,
             phantom: PhantomData,
-        };
+        }
     }
 
     pub fn freeze(&self) -> Vec<u8> {

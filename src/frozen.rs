@@ -20,7 +20,7 @@ impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = C::String> + FusedIterator + use<'a, C> {
+    pub fn iter(&self) -> impl FusedIterator<Item = C::String> + use<'_, C> {
         AutomataIter {
             automata: Self {
                 slice: self.slice,
@@ -78,9 +78,9 @@ struct AutomataIter<'a, C: AutomataCharacter> {
     character_stack: Vec<C>,
 }
 
-impl<'a, C: AutomataCharacter> FusedIterator for AutomataIter<'a, C> {}
+impl<C: AutomataCharacter> FusedIterator for AutomataIter<'_, C> {}
 
-impl<'a, C: AutomataCharacter> Iterator for AutomataIter<'a, C> {
+impl<C: AutomataCharacter> Iterator for AutomataIter<'_, C> {
     type Item = C::String;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn test_contains() {
         let planets: FrozenAutomata<'_, Character> =
-            FrozenAutomata::new(&crate::test_helpers::PLANETS_BYTES);
+            FrozenAutomata::new(crate::test_helpers::PLANETS_BYTES);
 
         let pluto = CharVec::from_str("pluto").unwrap();
         let goofy = CharVec::from_str("goofy").unwrap();
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn test_iter() {
         let planets: FrozenAutomata<'_, Character> =
-            FrozenAutomata::new(&crate::test_helpers::PLANETS_BYTES);
+            FrozenAutomata::new(crate::test_helpers::PLANETS_BYTES);
 
         let v: Vec<_> = planets.iter().map(|x| x.to_string()).collect();
 

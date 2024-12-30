@@ -8,8 +8,7 @@ impl From<usize> for SlabIndex {
 }
 
 impl SlabIndex {
-
-    pub const ZERO: Self =Self(0);
+    pub const ZERO: Self = Self(0);
 
     pub fn increment(&mut self) {
         self.0 += 1;

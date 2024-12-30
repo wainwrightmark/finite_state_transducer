@@ -1,6 +1,6 @@
 use crate::{
-    frozen::{self, FrozenAutomata},
     character::AutomataCharacter,
+    frozen::{self, FrozenAutomata},
     mutable::MutableAutomata,
     slab_index::SlabIndex,
 };
@@ -26,21 +26,21 @@ pub trait Structure {
     fn iter_indices() -> impl Iterator<Item = Self::Index>;
 
     fn find_words_inner(
+        &self,
         wa: &MutableAutomata<Self::Character>,
         results: &mut Vec<<Self::Character as AutomataCharacter>::String>,
         current_index: SlabIndex,
-        grid: &Self,
         new_tile: Self::Index,
         used_tiles: &Self::IndexSet,
-        previous_chars: &Vec<Self::Character>,
+        previous_chars: &[Self::Character],
     ) {
-        let Some(character) = grid.try_get_character(&new_tile) else {
+        let Some(character) = self.try_get_character(&new_tile) else {
             return;
         };
 
         if let Some(next_index) = wa[current_index].map.get(&character.to_u32()) {
             let state = &wa[*next_index];
-            let mut next_chars = previous_chars.clone();
+            let mut next_chars = previous_chars.to_owned();
             next_chars.push(character);
 
             let next_used_tiles = Self::set_insert(used_tiles, &new_tile);
@@ -51,11 +51,10 @@ pub trait Structure {
             }
 
             for tile in Self::iter_adjacent_unused(&new_tile, used_tiles) {
-                Self::find_words_inner(
+                self.find_words_inner(
                     wa,
                     results,
-                    (*next_index).into(),
-                    grid,
+                    *next_index,
                     tile,
                     &next_used_tiles,
                     &next_chars,
@@ -71,11 +70,10 @@ pub trait Structure {
         let mut result: Vec<<Self::Character as AutomataCharacter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
         for tile in Self::iter_indices() {
-            Self::find_words_inner(
+            self.find_words_inner(
                 wa,
                 &mut result,
                 SlabIndex(0),
-                self,
                 tile,
                 &empty_used_tiles,
                 &Vec::new(),
@@ -89,15 +87,15 @@ pub trait Structure {
     }
 
     fn find_words_inner_frozen(
+        &self,
         wa: &FrozenAutomata<Self::Character>,
         results: &mut Vec<<Self::Character as AutomataCharacter>::String>,
         current_index: SlabIndex,
-        structure: &Self,
         new_tile: Self::Index,
         used_tiles: &Self::IndexSet,
-        previous_chars: &Vec<Self::Character>,
+        previous_chars: &[Self::Character],
     ) {
-        let Some(character) = structure.try_get_character(&new_tile) else {
+        let Some(character) = self.try_get_character(&new_tile) else {
             return;
         };
 
@@ -109,7 +107,7 @@ pub trait Structure {
         }
 
         let next_index = wa.get_next_key(current_index, set.count_lesser_elements_const(c));
-        let mut next_chars = previous_chars.clone();
+        let mut next_chars = previous_chars.to_owned();
         next_chars.push(character);
 
         let next_set = wa.get_set(next_index);
@@ -122,11 +120,10 @@ pub trait Structure {
         let next_used_tiles = Self::set_insert(used_tiles, &new_tile);
 
         for tile in Self::iter_adjacent_unused(&new_tile, used_tiles) {
-            Self::find_words_inner_frozen(
+            self.find_words_inner_frozen(
                 wa,
                 results,
                 next_index,
-                structure,
                 tile,
                 &next_used_tiles,
                 &next_chars,
@@ -141,11 +138,10 @@ pub trait Structure {
         let mut result: Vec<<Self::Character as AutomataCharacter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
         for tile in Self::iter_indices() {
-            Self::find_words_inner_frozen(
+            self.find_words_inner_frozen(
                 wa,
                 &mut result,
                 SlabIndex(0),
-                self,
                 tile,
                 &empty_used_tiles,
                 &Vec::new(),
@@ -231,7 +227,7 @@ pub mod tests {
             Character::N,
         ]);
 
-        let wa: FrozenAutomata<'_, Character> = FrozenAutomata::new(&PLANETS_BYTES);
+        let wa: FrozenAutomata<'_, Character> = FrozenAutomata::new(PLANETS_BYTES);
 
         let words = structure.find_all_words_frozen(&wa);
 
@@ -309,7 +305,7 @@ pub mod tests {
         }
 
         fn iter_indices() -> impl Iterator<Item = Self::Index> {
-            (0..16).map(|x| StructureIndex(x))
+            (0..16).map(StructureIndex)
         }
     }
 }
