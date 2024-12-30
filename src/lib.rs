@@ -3,6 +3,7 @@ pub mod frozen;
 pub mod mutable;
 pub mod slab_index;
 pub mod structure;
+pub mod automata;
 
 #[cfg(test)]
 pub(crate) mod test_helpers {

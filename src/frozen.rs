@@ -1,7 +1,7 @@
 use const_sized_bit_set::BitSet32;
 use std::{iter::FusedIterator, marker::PhantomData};
 
-use crate::{character::AutomataCharacter, slab_index::SlabIndex};
+use crate::{automata::Automata, character::AutomataCharacter, slab_index::SlabIndex};
 
 #[derive(Debug)]
 pub struct FrozenAutomata<'s, C: AutomataCharacter> {
@@ -11,16 +11,8 @@ pub struct FrozenAutomata<'s, C: AutomataCharacter> {
 
 pub const CAN_TERMINATE_KEY: u32 = 31;
 
-#[allow(dead_code)]
-impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
-    pub const fn new(slice: &'s [u8]) -> Self {
-        Self {
-            slice,
-            phantom: PhantomData,
-        }
-    }
-
-    pub fn iter(&self) -> impl FusedIterator<Item = C::String> + use<'_, C> {
+impl<'s, C: AutomataCharacter> Automata<C> for FrozenAutomata<'s, C> {
+    fn iter(&self) -> impl FusedIterator<Item = C::String> {
         AutomataIter {
             automata: Self {
                 slice: self.slice,
@@ -31,7 +23,7 @@ impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
         }
     }
 
-    pub fn contains(&self, iter: impl Iterator<Item = C>) -> bool {
+    fn contains(&self, iter: impl IntoIterator<Item = C>) -> bool {
         let mut current_key: SlabIndex = SlabIndex::ZERO;
         let mut set = self.get_set(current_key);
 
@@ -45,6 +37,16 @@ impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
             }
         }
         set.contains_const(CAN_TERMINATE_KEY)
+    }
+}
+
+#[allow(dead_code)]
+impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
+    pub const fn new(slice: &'s [u8]) -> Self {
+        Self {
+            slice,
+            phantom: PhantomData,
+        }
     }
 
     pub(crate) const fn get_set(&self, key: SlabIndex) -> BitSet32 {
@@ -156,6 +158,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::FrozenAutomata;
+    use crate::automata::Automata;
     use crate::test_helpers::CharVec;
     use crate::test_helpers::Character;
 

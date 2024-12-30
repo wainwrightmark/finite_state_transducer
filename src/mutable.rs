@@ -4,7 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{character::*, slab_index::SlabIndex};
+use crate::{automata::Automata, character::*, slab_index::SlabIndex};
 
 #[derive(Debug, PartialEq)]
 pub struct MutableAutomata<C: AutomataCharacter> {
@@ -115,9 +115,8 @@ impl<C: AutomataCharacter> Iterator for AutomataIterator<'_, C> {
     }
 }
 
-#[allow(dead_code)]
-impl<C: AutomataCharacter> MutableAutomata<C> {
-    pub fn iter(&self) -> impl FusedIterator<Item = C::String> + use<'_, C> {
+impl<C: AutomataCharacter> Automata<C> for MutableAutomata<C> {
+    fn iter(&self) -> impl FusedIterator<Item = C::String> {
         AutomataIterator {
             automata: self,
             index_stack: vec![SlabIndex(0)],
@@ -125,7 +124,7 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
         }
     }
 
-    pub fn contains(&self, iter: impl IntoIterator<Item = C>) -> bool {
+    fn contains(&self, iter: impl IntoIterator<Item = C>) -> bool {
         let mut state = self.slab.first().unwrap();
 
         for c in iter {
