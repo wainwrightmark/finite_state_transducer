@@ -4,15 +4,15 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{automata::Automata, character::*, slab_index::SlabIndex};
+use crate::{slab_index::SlabIndex, Letter, FST};
 
 #[derive(Debug, PartialEq)]
-pub struct MutableAutomata<C: AutomataCharacter> {
+pub struct MutableFST<L: Letter> {
     slab: Vec<State>,
-    phantom: PhantomData<C>,
+    phantom: PhantomData<L>,
 }
 
-impl<C: AutomataCharacter> std::ops::Index<SlabIndex> for MutableAutomata<C> {
+impl<L: Letter> std::ops::Index<SlabIndex> for MutableFST<L> {
     type Output = State;
 
     fn index(&self, index: SlabIndex) -> &Self::Output {
@@ -20,13 +20,13 @@ impl<C: AutomataCharacter> std::ops::Index<SlabIndex> for MutableAutomata<C> {
     }
 }
 
-impl<C: AutomataCharacter> std::ops::IndexMut<SlabIndex> for MutableAutomata<C> {
+impl<L: Letter> std::ops::IndexMut<SlabIndex> for MutableFST<L> {
     fn index_mut(&mut self, index: SlabIndex) -> &mut Self::Output {
         self.slab.index_mut(index.0 as usize)
     }
 }
 
-impl<C: AutomataCharacter> Default for MutableAutomata<C> {
+impl<C: Letter> Default for MutableFST<C> {
     fn default() -> Self {
         Self {
             slab: vec![State::default()],
@@ -42,19 +42,19 @@ pub struct State {
 }
 
 #[derive(Debug)]
-struct AutomataIterator<'a, C: AutomataCharacter> {
-    automata: &'a MutableAutomata<C>,
+struct FSTIterator<'a, C: Letter> {
+    fst: &'a MutableFST<C>,
     index_stack: Vec<SlabIndex>,
     character_stack: Vec<C>,
 }
 
-impl<C: AutomataCharacter> FusedIterator for AutomataIterator<'_, C> {}
+impl<C: Letter> FusedIterator for FSTIterator<'_, C> {}
 
-impl<C: AutomataCharacter> Iterator for AutomataIterator<'_, C> {
+impl<C: Letter> Iterator for FSTIterator<'_, C> {
     type Item = C::String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        fn increment_last<C: AutomataCharacter>(
+        fn increment_last<C: Letter>(
             index_stack: &mut Vec<SlabIndex>,
             character_stack: &mut Vec<C>,
         ) {
@@ -79,7 +79,7 @@ impl<C: AutomataCharacter> Iterator for AutomataIterator<'_, C> {
         loop {
             let top_state_index = *self.index_stack.last()?;
 
-            let top = &self.automata[top_state_index];
+            let top = &self.fst[top_state_index];
 
             if let Some(character) = self.character_stack.get(self.index_stack.len() - 1) {
                 if let Some(nsi) = top.map.get(&character.to_u32()) {
@@ -115,16 +115,16 @@ impl<C: AutomataCharacter> Iterator for AutomataIterator<'_, C> {
     }
 }
 
-impl<C: AutomataCharacter> Automata<C> for MutableAutomata<C> {
-    fn iter(&self) -> impl FusedIterator<Item = C::String> {
-        AutomataIterator {
-            automata: self,
+impl<L: Letter> FST<L> for MutableFST<L> {
+    fn iter(&self) -> impl FusedIterator<Item = L::String> {
+        FSTIterator {
+            fst: self,
             index_stack: vec![SlabIndex(0)],
             character_stack: vec![],
         }
     }
 
-    fn contains(&self, iter: impl IntoIterator<Item = C>) -> bool {
+    fn contains(&self, iter: impl IntoIterator<Item = L>) -> bool {
         let mut state = self.slab.first().unwrap();
 
         for c in iter {
@@ -137,7 +137,7 @@ impl<C: AutomataCharacter> Automata<C> for MutableAutomata<C> {
     }
 }
 
-impl<C: AutomataCharacter> MutableAutomata<C> {
+impl<C: Letter> MutableFST<C> {
     /// Returns true if the word was added
     pub fn add_word(&mut self, iterator: impl IntoIterator<Item = C>) -> bool {
         let mut state_index: SlabIndex = SlabIndex(0);
@@ -165,8 +165,8 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
     }
 
     #[must_use]
-    pub fn compress(self) -> MutableAutomata<C> {
-        let MutableAutomata { mut slab, .. } = self;
+    pub fn compress(self) -> MutableFST<C> {
+        let MutableFST { mut slab, .. } = self;
 
         let mut replacements: HashMap<SlabIndex, SlabIndex> = Default::default();
         let mut removed: HashSet<SlabIndex> = Default::default();
@@ -206,7 +206,7 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
         }
 
         if removed.is_empty() {
-            return MutableAutomata {
+            return MutableFST {
                 slab,
                 phantom: PhantomData,
             };
@@ -241,7 +241,7 @@ impl<C: AutomataCharacter> MutableAutomata<C> {
             }
         }
 
-        MutableAutomata {
+        MutableFST {
             slab: new_slab,
             phantom: PhantomData,
         }
@@ -288,11 +288,11 @@ mod tests {
 
     use super::*;
     #[test]
-    pub fn test_word_automata() {
+    pub fn test_fst() {
         let mark = CharVec::from_str("Mark").unwrap();
         let mar = CharVec::from_str("Mar").unwrap();
 
-        let mut wa = MutableAutomata::<Character>::default();
+        let mut wa = MutableFST::<Character>::default();
 
         assert!(!wa.contains(mar.iter()));
         assert!(!wa.contains(mark.iter()));
@@ -312,8 +312,8 @@ mod tests {
         assert!(wa.contains(mark.iter()));
     }
 
-    fn make_planets() -> MutableAutomata<Character> {
-        let mut wa: MutableAutomata<Character> = MutableAutomata::default();
+    fn make_planets() -> MutableFST<Character> {
+        let mut wa: MutableFST<Character> = MutableFST::default();
 
         for word in [
             "Earth", "Mars", "Neptune", "Pluto", "Saturn", "Uranus", "Venus", "Some", "Random",

@@ -3,14 +3,14 @@
 version = 4
 
 [[package]]
-name = "automata2"
-version = "0.1.0"
-dependencies = [
- "const_sized_bit_set",
-]
-
-[[package]]
 name = "const_sized_bit_set"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3810bf74b553eb60c18e96414fc948f4a79b98d1fd1536dd8950cd7881cabc0b"
+
+[[package]]
+name = "finite_state_transducer"
+version = "0.1.0"
+dependencies = [
+ "const_sized_bit_set",
+]

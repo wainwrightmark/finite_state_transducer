@@ -1,13 +1,29 @@
-pub mod character;
+use std::iter::FusedIterator;
+
 pub mod frozen;
 pub mod mutable;
 pub mod slab_index;
 pub mod structure;
-pub mod automata;
+
+pub trait Letter: Sized {
+    type String;
+
+    fn try_from_u32(key: u32) -> Option<Self>;
+    fn to_u32(&self) -> u32;
+
+    fn join<'a>(items: impl Iterator<Item = &'a Self>) -> Self::String
+    where
+        Self: 'a;
+}
+
+pub trait FST<L: Letter> {
+    fn iter<'a>(&'a self) -> impl FusedIterator<Item = L::String>;
+    fn contains<'a>(&'a self, iter: impl IntoIterator<Item = L>) -> bool;
+}
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
-    use crate::character::AutomataCharacter;
+    use crate::Letter;
     use std::{fmt::Write, str::FromStr};
 
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -94,7 +110,7 @@ pub(crate) mod test_helpers {
 
             for offset in ['A', 'a'] {
                 if let Some(x) = c.checked_sub(offset as u8) {
-                    if let Some(c) = AutomataCharacter::try_from_u32(x as u32) {
+                    if let Some(c) = Letter::try_from_u32(x as u32) {
                         return Some(c);
                     }
                 }
@@ -104,7 +120,7 @@ pub(crate) mod test_helpers {
         }
     }
 
-    impl crate::character::AutomataCharacter for Character {
+    impl crate::Letter for Character {
         type String = CharVec;
 
         fn to_u32(&self) -> u32 {

@@ -1,20 +1,20 @@
 use const_sized_bit_set::BitSet32;
 use std::{iter::FusedIterator, marker::PhantomData};
 
-use crate::{automata::Automata, character::AutomataCharacter, slab_index::SlabIndex};
+use crate::{slab_index::SlabIndex, Letter, FST};
 
 #[derive(Debug)]
-pub struct FrozenAutomata<'s, C: AutomataCharacter> {
+pub struct FrozenFST<'s, L: Letter> {
     slice: &'s [u8],
-    phantom: PhantomData<C>,
+    phantom: PhantomData<L>,
 }
 
 pub const CAN_TERMINATE_KEY: u32 = 31;
 
-impl<'s, C: AutomataCharacter> Automata<C> for FrozenAutomata<'s, C> {
-    fn iter(&self) -> impl FusedIterator<Item = C::String> {
-        AutomataIter {
-            automata: Self {
+impl<'s, L: Letter> FST<L> for FrozenFST<'s, L> {
+    fn iter(&self) -> impl FusedIterator<Item = L::String> {
+        FSTIter {
+            fst: Self {
                 slice: self.slice,
                 phantom: self.phantom,
             },
@@ -23,7 +23,7 @@ impl<'s, C: AutomataCharacter> Automata<C> for FrozenAutomata<'s, C> {
         }
     }
 
-    fn contains(&self, iter: impl IntoIterator<Item = C>) -> bool {
+    fn contains(&self, iter: impl IntoIterator<Item = L>) -> bool {
         let mut current_key: SlabIndex = SlabIndex::ZERO;
         let mut set = self.get_set(current_key);
 
@@ -41,7 +41,7 @@ impl<'s, C: AutomataCharacter> Automata<C> for FrozenAutomata<'s, C> {
 }
 
 #[allow(dead_code)]
-impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
+impl<'s, C: Letter> FrozenFST<'s, C> {
     pub const fn new(slice: &'s [u8]) -> Self {
         Self {
             slice,
@@ -74,19 +74,19 @@ impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
     }
 }
 
-struct AutomataIter<'a, C: AutomataCharacter> {
-    automata: FrozenAutomata<'a, C>,
+struct FSTIter<'a, C: Letter> {
+    fst: FrozenFST<'a, C>,
     index_stack: Vec<SlabIndex>,
     character_stack: Vec<C>,
 }
 
-impl<C: AutomataCharacter> FusedIterator for AutomataIter<'_, C> {}
+impl<C: Letter> FusedIterator for FSTIter<'_, C> {}
 
-impl<C: AutomataCharacter> Iterator for AutomataIter<'_, C> {
+impl<C: Letter> Iterator for FSTIter<'_, C> {
     type Item = C::String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        fn increment_last<C: AutomataCharacter>(
+        fn increment_last<C: Letter>(
             index_stack: &mut Vec<SlabIndex>,
             character_stack: &mut Vec<C>,
         ) {
@@ -111,12 +111,11 @@ impl<C: AutomataCharacter> Iterator for AutomataIter<'_, C> {
         loop {
             let top_state_index = *self.index_stack.last()?;
 
-            let top_set = self.automata.get_set(top_state_index);
-            //let top = &self.automata[top_state_index];
+            let top_set = self.fst.get_set(top_state_index);
 
             if let Some(character) = self.character_stack.get(self.index_stack.len() - 1) {
                 if top_set.contains_const(character.to_u32()) {
-                    let nsi = self.automata.get_next_key(
+                    let nsi = self.fst.get_next_key(
                         top_state_index,
                         top_set.count_lesser_elements_const(character.to_u32()),
                     );
@@ -138,7 +137,7 @@ impl<C: AutomataCharacter> Iterator for AutomataIter<'_, C> {
                     .and_then(|x| C::try_from_u32(x))
                 {
                     self.character_stack.push(next_char);
-                    let next_index = self.automata.get_next_key(top_state_index, 0);
+                    let next_index = self.fst.get_next_key(top_state_index, 0);
                     self.index_stack.push(next_index);
                 } else {
                     self.index_stack.pop();
@@ -157,15 +156,14 @@ impl<C: AutomataCharacter> Iterator for AutomataIter<'_, C> {
 mod tests {
     use std::str::FromStr;
 
-    use super::FrozenAutomata;
-    use crate::automata::Automata;
+    use super::FrozenFST;
     use crate::test_helpers::CharVec;
     use crate::test_helpers::Character;
+    use crate::FST;
 
     #[test]
     fn test_contains() {
-        let planets: FrozenAutomata<'_, Character> =
-            FrozenAutomata::new(crate::test_helpers::PLANETS_BYTES);
+        let planets: FrozenFST<'_, Character> = FrozenFST::new(crate::test_helpers::PLANETS_BYTES);
 
         let pluto = CharVec::from_str("pluto").unwrap();
         let goofy = CharVec::from_str("goofy").unwrap();
@@ -176,8 +174,7 @@ mod tests {
 
     #[test]
     fn test_iter() {
-        let planets: FrozenAutomata<'_, Character> =
-            FrozenAutomata::new(crate::test_helpers::PLANETS_BYTES);
+        let planets: FrozenFST<'_, Character> = FrozenFST::new(crate::test_helpers::PLANETS_BYTES);
 
         let v: Vec<_> = planets.iter().map(|x| x.to_string()).collect();
 

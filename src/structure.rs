@@ -1,13 +1,13 @@
 use crate::{
-    character::AutomataCharacter,
-    frozen::{self, FrozenAutomata},
-    mutable::MutableAutomata,
+    frozen::{self, FrozenFST},
+    mutable::MutableFST,
     slab_index::SlabIndex,
+    Letter,
 };
 
 pub trait Structure {
     type String: Ord;
-    type Character: AutomataCharacter<String = Self::String> + Clone;
+    type Character: Letter<String = Self::String> + Clone;
 
     type Index;
     type IndexSet: Default;
@@ -27,8 +27,8 @@ pub trait Structure {
 
     fn find_words_inner(
         &self,
-        wa: &MutableAutomata<Self::Character>,
-        results: &mut Vec<<Self::Character as AutomataCharacter>::String>,
+        wa: &MutableFST<Self::Character>,
+        results: &mut Vec<<Self::Character as Letter>::String>,
         current_index: SlabIndex,
         new_tile: Self::Index,
         used_tiles: &Self::IndexSet,
@@ -65,9 +65,9 @@ pub trait Structure {
 
     fn find_all_words(
         &self,
-        wa: &MutableAutomata<Self::Character>,
-    ) -> Vec<<Self::Character as AutomataCharacter>::String> {
-        let mut result: Vec<<Self::Character as AutomataCharacter>::String> = vec![];
+        wa: &MutableFST<Self::Character>,
+    ) -> Vec<<Self::Character as Letter>::String> {
+        let mut result: Vec<<Self::Character as Letter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
         for tile in Self::iter_indices() {
             self.find_words_inner(
@@ -88,8 +88,8 @@ pub trait Structure {
 
     fn find_words_inner_frozen(
         &self,
-        wa: &FrozenAutomata<Self::Character>,
-        results: &mut Vec<<Self::Character as AutomataCharacter>::String>,
+        wa: &FrozenFST<Self::Character>,
+        results: &mut Vec<<Self::Character as Letter>::String>,
         current_index: SlabIndex,
         new_tile: Self::Index,
         used_tiles: &Self::IndexSet,
@@ -133,9 +133,9 @@ pub trait Structure {
 
     fn find_all_words_frozen(
         &self,
-        wa: &FrozenAutomata<Self::Character>,
-    ) -> Vec<<Self::Character as AutomataCharacter>::String> {
-        let mut result: Vec<<Self::Character as AutomataCharacter>::String> = vec![];
+        wa: &FrozenFST<Self::Character>,
+    ) -> Vec<<Self::Character as Letter>::String> {
+        let mut result: Vec<<Self::Character as Letter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
         for tile in Self::iter_indices() {
             self.find_words_inner_frozen(
@@ -158,13 +158,13 @@ pub trait Structure {
 #[cfg(test)]
 pub mod tests {
     use super::Structure;
-    use crate::{frozen::FrozenAutomata, test_helpers::*};
+    use crate::{frozen::FrozenFST, test_helpers::*};
 
     #[test]
     pub fn test_structure() {
         use std::str::FromStr;
 
-        use crate::mutable::MutableAutomata;
+        use crate::mutable::MutableFST;
 
         let structure = GridStructure([
             Character::V,
@@ -185,7 +185,7 @@ pub mod tests {
             Character::N,
         ]);
 
-        let mut wa: MutableAutomata<Character> = MutableAutomata::default();
+        let mut wa: MutableFST<Character> = MutableFST::default();
 
         for word in [
             "Earth", "Mars", "Neptune", "Pluto", "Saturn", "Uranus", "Venus", "Some", "Random",
@@ -227,7 +227,7 @@ pub mod tests {
             Character::N,
         ]);
 
-        let wa: FrozenAutomata<'_, Character> = FrozenAutomata::new(PLANETS_BYTES);
+        let wa: FrozenFST<'_, Character> = FrozenFST::new(PLANETS_BYTES);
 
         let words = structure.find_all_words_frozen(&wa);
 
