@@ -1,13 +1,13 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SlabIndex(pub u32);
+pub struct FSTIndex(pub u32);
 
-impl From<usize> for SlabIndex {
+impl From<usize> for FSTIndex {
     fn from(value: usize) -> Self {
         Self(value as u32)
     }
 }
 
-impl SlabIndex {
+impl FSTIndex {
     pub const ZERO: Self = Self(0);
 
     pub fn increment(&mut self) {

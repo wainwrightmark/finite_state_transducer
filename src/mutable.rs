@@ -1,27 +1,26 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    iter::FusedIterator,
     marker::PhantomData,
 };
 
-use crate::{slab_index::SlabIndex, Letter, FST};
+use crate::{index::FSTIndex, Letter, State, FST};
 
 #[derive(Debug, PartialEq)]
 pub struct MutableFST<L: Letter> {
-    slab: Vec<State>,
+    slab: Vec<MutableState>,
     phantom: PhantomData<L>,
 }
 
-impl<L: Letter> std::ops::Index<SlabIndex> for MutableFST<L> {
-    type Output = State;
+impl<L: Letter> std::ops::Index<FSTIndex> for MutableFST<L> {
+    type Output = MutableState;
 
-    fn index(&self, index: SlabIndex) -> &Self::Output {
+    fn index(&self, index: FSTIndex) -> &Self::Output {
         self.slab.index(index.0 as usize)
     }
 }
 
-impl<L: Letter> std::ops::IndexMut<SlabIndex> for MutableFST<L> {
-    fn index_mut(&mut self, index: SlabIndex) -> &mut Self::Output {
+impl<L: Letter> std::ops::IndexMut<FSTIndex> for MutableFST<L> {
+    fn index_mut(&mut self, index: FSTIndex) -> &mut Self::Output {
         self.slab.index_mut(index.0 as usize)
     }
 }
@@ -29,118 +28,49 @@ impl<L: Letter> std::ops::IndexMut<SlabIndex> for MutableFST<L> {
 impl<C: Letter> Default for MutableFST<C> {
     fn default() -> Self {
         Self {
-            slab: vec![State::default()],
+            slab: vec![MutableState::default()],
             phantom: PhantomData,
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Default)]
-pub struct State {
-    pub map: BTreeMap<u32, SlabIndex>,
+pub struct MutableState {
+    pub map: BTreeMap<u32, FSTIndex>,
     pub can_terminate: bool,
 }
 
-#[derive(Debug)]
-struct FSTIterator<'a, C: Letter> {
-    fst: &'a MutableFST<C>,
-    index_stack: Vec<SlabIndex>,
-    character_stack: Vec<C>,
-}
+impl<'s, L: Letter> State<L> for &'s MutableState {
+    fn can_terminate(&self) -> bool {
+        self.can_terminate
+    }
 
-impl<C: Letter> FusedIterator for FSTIterator<'_, C> {}
+    fn try_accept(&self, letter: &L) -> Option<FSTIndex> {
+        self.map.get(&letter.to_u32()).copied()
+    }
 
-impl<C: Letter> Iterator for FSTIterator<'_, C> {
-    type Item = C::String;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        fn increment_last<C: Letter>(
-            index_stack: &mut Vec<SlabIndex>,
-            character_stack: &mut Vec<C>,
-        ) {
-            loop {
-                match character_stack.last_mut() {
-                    Some(other) => {
-                        let next_index = other.to_u32() + 1;
-                        if let Some(next) = C::try_from_u32(next_index) {
-                            *other = next;
-                            return;
-                        //todo go to the next valid character instead
-                        } else {
-                            index_stack.pop();
-                            character_stack.pop();
-                        }
-                    }
-                    None => return,
-                }
-            }
-        }
-
-        loop {
-            let top_state_index = *self.index_stack.last()?;
-
-            let top = &self.fst[top_state_index];
-
-            if let Some(character) = self.character_stack.get(self.index_stack.len() - 1) {
-                if let Some(nsi) = top.map.get(&character.to_u32()) {
-                    self.index_stack.push(*nsi);
-                } else {
-                    increment_last(&mut self.index_stack, &mut self.character_stack);
-                }
-            } else {
-                let result: Option<C::String> = if top.can_terminate {
-                    let word = C::join(self.character_stack.iter());
-                    Some(word)
-                } else {
-                    None
-                };
-
-                if let Some((next_char, next_index)) = top
-                    .map
-                    .first_key_value()
-                    .and_then(|(c, i)| C::try_from_u32(*c).map(|c| (c, i)))
-                {
-                    self.character_stack.push(next_char);
-                    self.index_stack.push(*next_index);
-                } else {
-                    self.index_stack.pop();
-                    increment_last(&mut self.index_stack, &mut self.character_stack);
-                }
-
-                if result.is_some() {
-                    return result;
-                }
-            }
-        }
+    fn try_first(&self) -> Option<(L, FSTIndex)> {
+        self.map
+            .first_key_value()
+            .and_then(|(c, i)| L::try_from_u32(*c).map(|c| (c, *i)))
     }
 }
 
 impl<L: Letter> FST<L> for MutableFST<L> {
-    fn iter(&self) -> impl FusedIterator<Item = L::String> {
-        FSTIterator {
-            fst: self,
-            index_stack: vec![SlabIndex(0)],
-            character_stack: vec![],
-        }
-    }
+    type State<'s>
+        = &'s MutableState
+    where
+        Self: 's;
 
-    fn contains(&self, iter: impl IntoIterator<Item = L>) -> bool {
-        let mut state = self.slab.first().unwrap();
-
-        for c in iter {
-            match state.map.get(&c.to_u32()) {
-                Some(a) => state = &self[*a],
-                None => return false,
-            }
-        }
-        state.can_terminate
+    fn get_state<'a>(&'a self, index: FSTIndex) -> Self::State<'a> {
+        self.slab.get(index.0 as usize).unwrap()
     }
 }
 
 impl<C: Letter> MutableFST<C> {
     /// Returns true if the word was added
     pub fn add_word(&mut self, iterator: impl IntoIterator<Item = C>) -> bool {
-        let mut state_index: SlabIndex = SlabIndex(0);
+        let mut state_index: FSTIndex = FSTIndex(0);
 
         for c in iterator {
             let c = c.to_u32();
@@ -149,8 +79,8 @@ impl<C: Letter> MutableFST<C> {
                     state_index = *a;
                 }
                 None => {
-                    let new_state = State::default();
-                    let new_state_index: SlabIndex = self.slab.len().into();
+                    let new_state = MutableState::default();
+                    let new_state_index: FSTIndex = self.slab.len().into();
                     self.slab.push(new_state);
 
                     self[state_index].map.insert(c, new_state_index);
@@ -168,14 +98,14 @@ impl<C: Letter> MutableFST<C> {
     pub fn compress(self) -> MutableFST<C> {
         let MutableFST { mut slab, .. } = self;
 
-        let mut replacements: HashMap<SlabIndex, SlabIndex> = Default::default();
-        let mut removed: HashSet<SlabIndex> = Default::default();
+        let mut replacements: HashMap<FSTIndex, FSTIndex> = Default::default();
+        let mut removed: HashSet<FSTIndex> = Default::default();
         loop {
-            let mut leaves: HashMap<&State, SlabIndex> = Default::default();
+            let mut leaves: HashMap<&MutableState, FSTIndex> = Default::default();
             replacements.clear();
 
             for (index, state) in slab.iter().enumerate() {
-                let index: SlabIndex = SlabIndex(index as u32); //index can't be zero here
+                let index: FSTIndex = FSTIndex(index as u32); //index can't be zero here
 
                 match leaves.entry(state) {
                     std::collections::hash_map::Entry::Occupied(occupied_entry) => {
@@ -213,14 +143,14 @@ impl<C: Letter> MutableFST<C> {
         }
 
         replacements.clear();
-        let mut new_slab: Vec<State> = Default::default();
-        let mut next_index = SlabIndex(1);
+        let mut new_slab: Vec<MutableState> = Default::default();
+        let mut next_index = FSTIndex(1);
 
         for (old_index, state) in slab.drain(..).enumerate() {
             if old_index == 0 {
                 new_slab.push(state);
             } else {
-                let old_index: SlabIndex = old_index.into();
+                let old_index: FSTIndex = old_index.into();
                 if removed.contains(&old_index) {
                     continue;
                 }

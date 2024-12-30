@@ -1,18 +1,13 @@
-use crate::{
-    frozen::{self, FrozenFST},
-    mutable::MutableFST,
-    slab_index::SlabIndex,
-    Letter,
-};
+use crate::{index::FSTIndex, Letter, State, FST};
 
 pub trait Structure {
     type String: Ord;
-    type Character: Letter<String = Self::String> + Clone;
+    type Letter: Letter<String = Self::String> + Clone;
 
     type Index;
     type IndexSet: Default;
 
-    fn try_get_character(&self, index: &Self::Index) -> Option<Self::Character>;
+    fn try_get_letter(&self, index: &Self::Index) -> Option<Self::Letter>;
 
     fn set_insert(set: &Self::IndexSet, index: &Self::Index) -> Self::IndexSet;
 
@@ -27,121 +22,43 @@ pub trait Structure {
 
     fn find_words_inner(
         &self,
-        wa: &MutableFST<Self::Character>,
-        results: &mut Vec<<Self::Character as Letter>::String>,
-        current_index: SlabIndex,
+        wa: &impl FST<Self::Letter>,
+        results: &mut Vec<<Self::Letter as Letter>::String>,
+        current_index: FSTIndex,
         new_tile: Self::Index,
         used_tiles: &Self::IndexSet,
-        previous_chars: &[Self::Character],
+        previous_chars: &[Self::Letter],
     ) {
-        let Some(character) = self.try_get_character(&new_tile) else {
+        let Some(character) = self.try_get_letter(&new_tile) else {
             return;
         };
 
-        if let Some(next_index) = wa[current_index].map.get(&character.to_u32()) {
-            let state = &wa[*next_index];
+        if let Some(next_index) = wa.get_state(current_index).try_accept(&character) {
+            let state = wa.get_state(next_index);
             let mut next_chars = previous_chars.to_owned();
             next_chars.push(character);
 
             let next_used_tiles = Self::set_insert(used_tiles, &new_tile);
 
-            if state.can_terminate {
-                let string = Self::Character::join(next_chars.iter());
+            if state.can_terminate() {
+                let string = Self::Letter::join(next_chars.iter());
                 results.push(string);
             }
 
             for tile in Self::iter_adjacent_unused(&new_tile, used_tiles) {
-                self.find_words_inner(
-                    wa,
-                    results,
-                    *next_index,
-                    tile,
-                    &next_used_tiles,
-                    &next_chars,
-                );
+                self.find_words_inner(wa, results, next_index, tile, &next_used_tiles, &next_chars);
             }
         }
     }
 
-    fn find_all_words(
-        &self,
-        wa: &MutableFST<Self::Character>,
-    ) -> Vec<<Self::Character as Letter>::String> {
-        let mut result: Vec<<Self::Character as Letter>::String> = vec![];
+    fn find_all_words(&self, wa: &impl FST<Self::Letter>) -> Vec<<Self::Letter as Letter>::String> {
+        let mut result: Vec<<Self::Letter as Letter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
         for tile in Self::iter_indices() {
             self.find_words_inner(
                 wa,
                 &mut result,
-                SlabIndex(0),
-                tile,
-                &empty_used_tiles,
-                &Vec::new(),
-            )
-        }
-
-        result.sort();
-        result.dedup();
-
-        result
-    }
-
-    fn find_words_inner_frozen(
-        &self,
-        wa: &FrozenFST<Self::Character>,
-        results: &mut Vec<<Self::Character as Letter>::String>,
-        current_index: SlabIndex,
-        new_tile: Self::Index,
-        used_tiles: &Self::IndexSet,
-        previous_chars: &[Self::Character],
-    ) {
-        let Some(character) = self.try_get_character(&new_tile) else {
-            return;
-        };
-
-        let set = wa.get_set(current_index);
-        let c = character.to_u32();
-
-        if !set.contains_const(c) {
-            return;
-        }
-
-        let next_index = wa.get_next_key(current_index, set.count_lesser_elements_const(c));
-        let mut next_chars = previous_chars.to_owned();
-        next_chars.push(character);
-
-        let next_set = wa.get_set(next_index);
-
-        if next_set.contains_const(frozen::CAN_TERMINATE_KEY) {
-            let string = Self::Character::join(next_chars.iter());
-            results.push(string);
-        }
-
-        let next_used_tiles = Self::set_insert(used_tiles, &new_tile);
-
-        for tile in Self::iter_adjacent_unused(&new_tile, used_tiles) {
-            self.find_words_inner_frozen(
-                wa,
-                results,
-                next_index,
-                tile,
-                &next_used_tiles,
-                &next_chars,
-            );
-        }
-    }
-
-    fn find_all_words_frozen(
-        &self,
-        wa: &FrozenFST<Self::Character>,
-    ) -> Vec<<Self::Character as Letter>::String> {
-        let mut result: Vec<<Self::Character as Letter>::String> = vec![];
-        let empty_used_tiles = Self::IndexSet::default();
-        for tile in Self::iter_indices() {
-            self.find_words_inner_frozen(
-                wa,
-                &mut result,
-                SlabIndex(0),
+                FSTIndex(0),
                 tile,
                 &empty_used_tiles,
                 &Vec::new(),
@@ -229,7 +146,7 @@ pub mod tests {
 
         let wa: FrozenFST<'_, Character> = FrozenFST::new(PLANETS_BYTES);
 
-        let words = structure.find_all_words_frozen(&wa);
+        let words = structure.find_all_words(&wa);
 
         let found_words: Vec<_> = words.iter().map(|x| x.to_string()).collect();
 
@@ -273,13 +190,13 @@ pub mod tests {
     impl Structure for GridStructure {
         type String = CharVec;
 
-        type Character = Character;
+        type Letter = Character;
 
         type Index = StructureIndex;
 
         type IndexSet = StructureIndexSet;
 
-        fn try_get_character(&self, index: &Self::Index) -> Option<Self::Character> {
+        fn try_get_letter(&self, index: &Self::Index) -> Option<Self::Letter> {
             Some(self.0[index.0 as usize])
         }
 

@@ -1,7 +1,7 @@
 use const_sized_bit_set::BitSet32;
-use std::{iter::FusedIterator, marker::PhantomData};
+use std::marker::PhantomData;
 
-use crate::{slab_index::SlabIndex, Letter, FST};
+use crate::{index::FSTIndex, Letter, State, FST};
 
 #[derive(Debug)]
 pub struct FrozenFST<'s, L: Letter> {
@@ -9,48 +9,18 @@ pub struct FrozenFST<'s, L: Letter> {
     phantom: PhantomData<L>,
 }
 
-pub const CAN_TERMINATE_KEY: u32 = 31;
-
-impl<'s, L: Letter> FST<L> for FrozenFST<'s, L> {
-    fn iter(&self) -> impl FusedIterator<Item = L::String> {
-        FSTIter {
-            fst: Self {
-                slice: self.slice,
-                phantom: self.phantom,
-            },
-            index_stack: vec![SlabIndex(0)],
-            character_stack: vec![],
-        }
-    }
-
-    fn contains(&self, iter: impl IntoIterator<Item = L>) -> bool {
-        let mut current_key: SlabIndex = SlabIndex::ZERO;
-        let mut set = self.get_set(current_key);
-
-        for c in iter {
-            let c = c.to_u32();
-            if set.contains_const(c) {
-                current_key = self.get_next_key(current_key, set.count_lesser_elements_const(c));
-                set = self.get_set(current_key);
-            } else {
-                return false;
-            }
-        }
-        set.contains_const(CAN_TERMINATE_KEY)
-    }
+#[derive(Debug)]
+pub struct FrozenState<'s, L: Letter> {
+    index: FSTIndex,
+    slice: &'s [u8],
+    phantom: PhantomData<L>,
 }
 
-#[allow(dead_code)]
-impl<'s, C: Letter> FrozenFST<'s, C> {
-    pub const fn new(slice: &'s [u8]) -> Self {
-        Self {
-            slice,
-            phantom: PhantomData,
-        }
-    }
+impl<'s, L: Letter> FrozenState<'s, L> {
+    const CAN_TERMINATE_KEY: u32 = 31;
 
-    pub(crate) const fn get_set(&self, key: SlabIndex) -> BitSet32 {
-        let index = (key.0 as usize) * 4;
+    const fn get_set(&self) -> BitSet32 {
+        let index = (self.index.0 as usize) * 4;
         let integer = u32::from_le_bytes([
             self.slice[index],
             self.slice[index + 1],
@@ -61,7 +31,7 @@ impl<'s, C: Letter> FrozenFST<'s, C> {
         BitSet32::from_inner_const(integer)
     }
 
-    pub(crate) const fn get_next_key(&self, set_key: SlabIndex, element_index: u32) -> SlabIndex {
+    const fn get_next_key(&self, set_key: FSTIndex, element_index: u32) -> FSTIndex {
         let index = ((set_key.0 + 1 + element_index) as usize) * 4;
         let integer = u32::from_le_bytes([
             self.slice[index],
@@ -70,84 +40,56 @@ impl<'s, C: Letter> FrozenFST<'s, C> {
             self.slice[index + 3],
         ]);
 
-        SlabIndex(integer)
+        FSTIndex(integer)
     }
 }
 
-struct FSTIter<'a, C: Letter> {
-    fst: FrozenFST<'a, C>,
-    index_stack: Vec<SlabIndex>,
-    character_stack: Vec<C>,
+impl<'s, L: Letter> State<L> for FrozenState<'s, L> {
+    fn can_terminate(&self) -> bool {
+        self.get_set().contains_const(Self::CAN_TERMINATE_KEY)
+    }
+
+    fn try_accept(&self, letter: &L) -> Option<FSTIndex> {
+        let set = self.get_set();
+        if set.contains_const(letter.to_u32()) {
+            let offset = set.count_lesser_elements_const(letter.to_u32());
+
+            Some(self.get_next_key(self.index, offset))
+        } else {
+            None
+        }
+    }
+
+    fn try_first(&self) -> Option<(L, FSTIndex)> {
+        self.get_set()
+            .first_const()
+            .filter(|x| *x < Self::CAN_TERMINATE_KEY)
+            .and_then(|x| L::try_from_u32(x))
+            .map(|x| (x, self.get_next_key(self.index, 0)))
+    }
 }
 
-impl<C: Letter> FusedIterator for FSTIter<'_, C> {}
+impl<'s, L: Letter> FST<L> for FrozenFST<'s, L> {
+    type State<'state>
+        = FrozenState<'state, L>
+    where
+        Self: 'state;
 
-impl<C: Letter> Iterator for FSTIter<'_, C> {
-    type Item = C::String;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        fn increment_last<C: Letter>(
-            index_stack: &mut Vec<SlabIndex>,
-            character_stack: &mut Vec<C>,
-        ) {
-            loop {
-                match character_stack.last_mut() {
-                    Some(other) => {
-                        let next_index = other.to_u32() + 1;
-                        if let Some(next) = C::try_from_u32(next_index) {
-                            *other = next;
-                            return;
-                        //todo go to the next valid character instead
-                        } else {
-                            index_stack.pop();
-                            character_stack.pop();
-                        }
-                    }
-                    None => return,
-                }
-            }
+    fn get_state<'a>(&'a self, index: FSTIndex) -> Self::State<'a> {
+        FrozenState {
+            index,
+            slice: &self.slice,
+            phantom: PhantomData,
         }
+    }
+}
 
-        loop {
-            let top_state_index = *self.index_stack.last()?;
-
-            let top_set = self.fst.get_set(top_state_index);
-
-            if let Some(character) = self.character_stack.get(self.index_stack.len() - 1) {
-                if top_set.contains_const(character.to_u32()) {
-                    let nsi = self.fst.get_next_key(
-                        top_state_index,
-                        top_set.count_lesser_elements_const(character.to_u32()),
-                    );
-                    self.index_stack.push(nsi);
-                } else {
-                    increment_last(&mut self.index_stack, &mut self.character_stack);
-                }
-            } else {
-                let result: Option<C::String> = if top_set.contains_const(CAN_TERMINATE_KEY) {
-                    let word = C::join(self.character_stack.iter());
-                    Some(word)
-                } else {
-                    None
-                };
-
-                if let Some(next_char) = top_set
-                    .first_const()
-                    .filter(|x| *x < CAN_TERMINATE_KEY)
-                    .and_then(|x| C::try_from_u32(x))
-                {
-                    self.character_stack.push(next_char);
-                    let next_index = self.fst.get_next_key(top_state_index, 0);
-                    self.index_stack.push(next_index);
-                } else {
-                    self.index_stack.pop();
-                    increment_last(&mut self.index_stack, &mut self.character_stack);
-                }
-
-                if result.is_some() {
-                    return result;
-                }
-            }
+#[allow(dead_code)]
+impl<'s, C: Letter> FrozenFST<'s, C> {
+    pub const fn new(slice: &'s [u8]) -> Self {
+        Self {
+            slice,
+            phantom: PhantomData,
         }
     }
 }

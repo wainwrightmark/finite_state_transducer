@@ -1,9 +1,12 @@
-use std::iter::FusedIterator;
-
 pub mod frozen;
+pub mod index;
+pub mod iterator;
 pub mod mutable;
-pub mod slab_index;
 pub mod structure;
+
+use index::FSTIndex;
+use iterator::FSTIterator;
+use std::iter::FusedIterator;
 
 pub trait Letter: Sized {
     type String;
@@ -16,9 +19,34 @@ pub trait Letter: Sized {
         Self: 'a;
 }
 
-pub trait FST<L: Letter> {
-    fn iter<'a>(&'a self) -> impl FusedIterator<Item = L::String>;
-    fn contains<'a>(&'a self, iter: impl IntoIterator<Item = L>) -> bool;
+pub trait FST<L: Letter>: Sized {
+    type State<'s>: State<L>
+    where
+        Self: 's;
+
+    fn iter<'a>(&'a self) -> impl FusedIterator<Item = L::String> {
+        FSTIterator::new(self)
+    }
+    fn contains<'a>(&'a self, iter: impl IntoIterator<Item = L>) -> bool {
+        let mut state = self.get_state(FSTIndex::ZERO);
+
+        for l in iter {
+            if let Some(next_key) = state.try_accept(&l) {
+                state = self.get_state(next_key);
+            } else {
+                return false;
+            }
+        }
+        state.can_terminate()
+    }
+
+    fn get_state<'a>(&'a self, index: FSTIndex) -> Self::State<'a>;
+}
+
+pub trait State<L: Letter> {
+    fn can_terminate(&self) -> bool;
+    fn try_accept(&self, letter: &L) -> Option<FSTIndex>;
+    fn try_first(&self) -> Option<(L, FSTIndex)>;
 }
 
 #[cfg(test)]
