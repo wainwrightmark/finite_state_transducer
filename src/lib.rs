@@ -1,4 +1,4 @@
-pub mod bytes;
+pub mod frozen;
 pub mod character;
 pub mod mutable;
 pub mod slab_index;

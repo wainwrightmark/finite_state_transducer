@@ -7,12 +7,12 @@ use std::{
 use crate::{character::*, slab_index::SlabIndex};
 
 #[derive(Debug, PartialEq)]
-pub struct WordAutomata<C: AutomataCharacter> {
+pub struct MutableAutomata<C: AutomataCharacter> {
     slab: Vec<State>,
     phantom: PhantomData<C>,
 }
 
-impl<C: AutomataCharacter> std::ops::Index<SlabIndex> for WordAutomata<C> {
+impl<C: AutomataCharacter> std::ops::Index<SlabIndex> for MutableAutomata<C> {
     type Output = State;
 
     fn index(&self, index: SlabIndex) -> &Self::Output {
@@ -20,13 +20,13 @@ impl<C: AutomataCharacter> std::ops::Index<SlabIndex> for WordAutomata<C> {
     }
 }
 
-impl<C: AutomataCharacter> std::ops::IndexMut<SlabIndex> for WordAutomata<C> {
+impl<C: AutomataCharacter> std::ops::IndexMut<SlabIndex> for MutableAutomata<C> {
     fn index_mut(&mut self, index: SlabIndex) -> &mut Self::Output {
         self.slab.index_mut(index.0 as usize)
     }
 }
 
-impl<C: AutomataCharacter> Default for WordAutomata<C> {
+impl<C: AutomataCharacter> Default for MutableAutomata<C> {
     fn default() -> Self {
         Self {
             slab: vec![State::default()],
@@ -50,8 +50,9 @@ impl Default for State {
     }
 }
 
-pub struct AutomataIterator<'a, C: AutomataCharacter> {
-    automata: &'a WordAutomata<C>,
+#[derive(Debug)]
+struct AutomataIterator<'a, C: AutomataCharacter> {
+    automata: &'a MutableAutomata<C>,
     index_stack: Vec<SlabIndex>,
     character_stack: Vec<C>,
 }
@@ -124,8 +125,8 @@ impl<'a, C: AutomataCharacter> Iterator for AutomataIterator<'a, C> {
 }
 
 #[allow(dead_code)]
-impl<C: AutomataCharacter> WordAutomata<C> {
-    pub fn iter(&self) -> AutomataIterator<C> {
+impl<C: AutomataCharacter> MutableAutomata<C> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = C::String> + FusedIterator + use<'a, C> {
         AutomataIterator {
             automata: self,
             index_stack: vec![SlabIndex(0)],
@@ -146,7 +147,7 @@ impl<C: AutomataCharacter> WordAutomata<C> {
     }
 }
 
-impl<C: AutomataCharacter> WordAutomata<C> {
+impl<C: AutomataCharacter> MutableAutomata<C> {
     /// Returns true if the word was added
     pub fn add_word(&mut self, iterator: impl IntoIterator<Item = C>) -> bool {
         let mut state_index: SlabIndex = SlabIndex(0);
@@ -174,8 +175,8 @@ impl<C: AutomataCharacter> WordAutomata<C> {
     }
 
     #[must_use]
-    pub fn compress(self) -> WordAutomata<C> {
-        let WordAutomata { mut slab, .. } = self;
+    pub fn compress(self) -> MutableAutomata<C> {
+        let MutableAutomata { mut slab, .. } = self;
 
         let mut replacements: HashMap<SlabIndex, SlabIndex> = Default::default();
         let mut removed: HashSet<SlabIndex> = Default::default();
@@ -215,7 +216,7 @@ impl<C: AutomataCharacter> WordAutomata<C> {
         }
 
         if removed.is_empty() {
-            return WordAutomata {
+            return MutableAutomata {
                 slab,
                 phantom: PhantomData,
             };
@@ -250,13 +251,13 @@ impl<C: AutomataCharacter> WordAutomata<C> {
             }
         }
 
-        return WordAutomata {
+        return MutableAutomata {
             slab: new_slab,
             phantom: PhantomData,
         };
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn freeze(&self) -> Vec<u8> {
         let mut bytes = vec![];
         let mut mappings: BTreeMap<u32, u32> = Default::default(); //todo replace with vecs
         let mut next_key = 0u32;
@@ -292,9 +293,8 @@ impl<C: AutomataCharacter> WordAutomata<C> {
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr, vec};
-
     use crate::test_helpers::*;
+    use std::str::FromStr;
 
     use super::*;
     #[test]
@@ -302,7 +302,7 @@ mod tests {
         let mark = CharVec::from_str("Mark").unwrap();
         let mar = CharVec::from_str("Mar").unwrap();
 
-        let mut wa = WordAutomata::<Character>::default();
+        let mut wa = MutableAutomata::<Character>::default();
 
         assert!(!wa.contains(mar.iter()));
         assert!(!wa.contains(mark.iter()));
@@ -322,8 +322,8 @@ mod tests {
         assert!(wa.contains(mark.iter()));
     }
 
-    fn make_planets() -> WordAutomata<Character> {
-        let mut wa: WordAutomata<Character> = WordAutomata::default();
+    fn make_planets() -> MutableAutomata<Character> {
+        let mut wa: MutableAutomata<Character> = MutableAutomata::default();
 
         for word in [
             "Earth", "Mars", "Neptune", "Pluto", "Saturn", "Uranus", "Venus", "Some", "Random",
@@ -339,7 +339,7 @@ mod tests {
     pub fn test_iter() {
         let wa = make_planets();
 
-        let v: Vec<_> = wa.iter().map(|x|x.to_string()) .collect();
+        let v: Vec<_> = wa.iter().map(|x| x.to_string()).collect();
 
         let joined = v.join(", ");
 
@@ -357,7 +357,7 @@ mod tests {
         let wa = wa.compress();
         assert_eq!(wa.slab.len(), 38);
 
-        let v: Vec<_> = wa.iter().map(|x|x.to_string()).collect();
+        let v: Vec<_> = wa.iter().map(|x| x.to_string()).collect();
 
         let joined = v.join(", ");
 
@@ -371,26 +371,8 @@ mod tests {
     pub fn test_to_bytes() {
         let wa = make_planets();
         let wa = wa.compress();
-        let bytes = wa.to_bytes();
+        let bytes = wa.freeze();
 
-        assert_eq!(
-            bytes,
-            vec![
-                16, 176, 118, 0, 10, 0, 0, 0, 19, 0, 0, 0, 25, 0, 0, 0, 37, 0, 0, 0, 68, 0, 0, 0,
-                45, 0, 0, 0, 56, 0, 0, 0, 64, 0, 0, 0, 78, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0,
-                2, 0, 14, 0, 0, 0, 0, 0, 8, 0, 16, 0, 0, 0, 128, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0,
-                128, 1, 0, 0, 0, 21, 0, 0, 0, 0, 0, 2, 0, 23, 0, 0, 0, 0, 0, 4, 0, 18, 0, 0, 0, 16,
-                0, 0, 0, 27, 0, 0, 0, 0, 128, 0, 0, 29, 0, 0, 0, 0, 0, 8, 0, 31, 0, 0, 0, 0, 0, 16,
-                0, 33, 0, 0, 0, 0, 32, 0, 0, 35, 0, 0, 0, 16, 0, 0, 0, 18, 0, 0, 0, 0, 8, 0, 0, 39,
-                0, 0, 0, 0, 0, 16, 0, 41, 0, 0, 0, 0, 0, 8, 0, 43, 0, 0, 0, 0, 64, 0, 0, 18, 0, 0,
-                0, 1, 64, 0, 0, 48, 0, 0, 0, 66, 0, 0, 0, 0, 0, 8, 0, 50, 0, 0, 0, 0, 0, 16, 0, 52,
-                0, 0, 0, 0, 0, 2, 0, 54, 0, 0, 0, 0, 32, 0, 0, 18, 0, 0, 0, 0, 0, 2, 0, 58, 0, 0,
-                0, 1, 0, 0, 0, 60, 0, 0, 0, 0, 32, 0, 0, 62, 0, 0, 0, 0, 0, 16, 0, 23, 0, 0, 0, 16,
-                0, 0, 0, 60, 0, 0, 0, 0, 16, 0, 0, 35, 0, 0, 0, 1, 0, 0, 0, 70, 0, 0, 0, 0, 32, 0,
-                0, 72, 0, 0, 0, 8, 0, 0, 0, 74, 0, 0, 0, 0, 64, 0, 0, 76, 0, 0, 0, 0, 16, 0, 0, 18,
-                0, 0, 0, 0, 64, 0, 0, 80, 0, 0, 0, 0, 0, 2, 0, 82, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0,
-                0
-            ]
-        )
+        assert_eq!(bytes, PLANETS_BYTES)
     }
 }

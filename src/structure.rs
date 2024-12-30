@@ -1,7 +1,7 @@
 use crate::{
-    bytes::{self, BytesAutomata},
+    frozen::{self, FrozenAutomata},
     character::AutomataCharacter,
-    mutable::WordAutomata,
+    mutable::MutableAutomata,
     slab_index::SlabIndex,
 };
 
@@ -26,7 +26,7 @@ pub trait Structure {
     fn iter_indices() -> impl Iterator<Item = Self::Index>;
 
     fn find_words_inner(
-        wa: &WordAutomata<Self::Character>,
+        wa: &MutableAutomata<Self::Character>,
         results: &mut Vec<<Self::Character as AutomataCharacter>::String>,
         current_index: SlabIndex,
         grid: &Self,
@@ -66,7 +66,7 @@ pub trait Structure {
 
     fn find_all_words(
         &self,
-        wa: &WordAutomata<Self::Character>,
+        wa: &MutableAutomata<Self::Character>,
     ) -> Vec<<Self::Character as AutomataCharacter>::String> {
         let mut result: Vec<<Self::Character as AutomataCharacter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
@@ -89,7 +89,7 @@ pub trait Structure {
     }
 
     fn find_words_inner_frozen(
-        wa: &BytesAutomata<Self::Character>,
+        wa: &FrozenAutomata<Self::Character>,
         results: &mut Vec<<Self::Character as AutomataCharacter>::String>,
         current_index: SlabIndex,
         structure: &Self,
@@ -114,7 +114,7 @@ pub trait Structure {
 
         let next_set = wa.get_set(next_index);
 
-        if next_set.contains_const(bytes::CAN_TERMINATE_KEY) {
+        if next_set.contains_const(frozen::CAN_TERMINATE_KEY) {
             let string = Self::Character::join(next_chars.iter());
             results.push(string);
         }
@@ -136,7 +136,7 @@ pub trait Structure {
 
     fn find_all_words_frozen(
         &self,
-        wa: &BytesAutomata<Self::Character>,
+        wa: &FrozenAutomata<Self::Character>,
     ) -> Vec<<Self::Character as AutomataCharacter>::String> {
         let mut result: Vec<<Self::Character as AutomataCharacter>::String> = vec![];
         let empty_used_tiles = Self::IndexSet::default();
@@ -162,13 +162,13 @@ pub trait Structure {
 #[cfg(test)]
 pub mod tests {
     use super::Structure;
-    use crate::{bytes::BytesAutomata, test_helpers::*};
+    use crate::{frozen::FrozenAutomata, test_helpers::*};
 
     #[test]
     pub fn test_structure() {
         use std::str::FromStr;
 
-        use crate::mutable::WordAutomata;
+        use crate::mutable::MutableAutomata;
 
         let structure = GridStructure([
             Character::V,
@@ -189,7 +189,7 @@ pub mod tests {
             Character::N,
         ]);
 
-        let mut wa: WordAutomata<Character> = WordAutomata::default();
+        let mut wa: MutableAutomata<Character> = MutableAutomata::default();
 
         for word in [
             "Earth", "Mars", "Neptune", "Pluto", "Saturn", "Uranus", "Venus", "Some", "Random",
@@ -231,7 +231,7 @@ pub mod tests {
             Character::N,
         ]);
 
-        let wa: BytesAutomata<'_, Character> = BytesAutomata::new(&PLANETS_BYTES);
+        let wa: FrozenAutomata<'_, Character> = FrozenAutomata::new(&PLANETS_BYTES);
 
         let words = structure.find_all_words_frozen(&wa);
 

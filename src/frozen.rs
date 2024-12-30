@@ -4,7 +4,7 @@ use std::{iter::FusedIterator, marker::PhantomData};
 use crate::{character::AutomataCharacter, slab_index::SlabIndex};
 
 #[derive(Debug)]
-pub struct BytesAutomata<'s, C: AutomataCharacter> {
+pub struct FrozenAutomata<'s, C: AutomataCharacter> {
     slice: &'s [u8],
     phantom: PhantomData<C>,
 }
@@ -12,7 +12,7 @@ pub struct BytesAutomata<'s, C: AutomataCharacter> {
 pub const CAN_TERMINATE_KEY: u32 = 31;
 
 #[allow(dead_code)]
-impl<'s, C: AutomataCharacter> BytesAutomata<'s, C> {
+impl<'s, C: AutomataCharacter> FrozenAutomata<'s, C> {
     pub const fn new(slice: &'s [u8]) -> Self {
         Self {
             slice,
@@ -20,8 +20,8 @@ impl<'s, C: AutomataCharacter> BytesAutomata<'s, C> {
         }
     }
 
-    pub fn iter(&self) -> BytesAutomataIter<C> {
-        BytesAutomataIter {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = C::String> + FusedIterator + use<'a, C> {
+        AutomataIter {
             automata: Self {
                 slice: self.slice,
                 phantom: self.phantom,
@@ -47,7 +47,7 @@ impl<'s, C: AutomataCharacter> BytesAutomata<'s, C> {
         set.contains_const(CAN_TERMINATE_KEY)
     }
 
-    pub (crate) const fn get_set(&self, key: SlabIndex) -> BitSet32 {
+    pub(crate) const fn get_set(&self, key: SlabIndex) -> BitSet32 {
         let index = (key.0 as usize) * 4;
         let integer = u32::from_le_bytes([
             self.slice[index],
@@ -59,7 +59,7 @@ impl<'s, C: AutomataCharacter> BytesAutomata<'s, C> {
         BitSet32::from_inner_const(integer)
     }
 
-    pub (crate) const fn get_next_key(&self, set_key: SlabIndex, element_index: u32) -> SlabIndex {
+    pub(crate) const fn get_next_key(&self, set_key: SlabIndex, element_index: u32) -> SlabIndex {
         let index = ((set_key.0 + 1 + element_index) as usize) * 4;
         let integer = u32::from_le_bytes([
             self.slice[index],
@@ -72,15 +72,15 @@ impl<'s, C: AutomataCharacter> BytesAutomata<'s, C> {
     }
 }
 
-pub struct BytesAutomataIter<'a, C: AutomataCharacter> {
-    automata: BytesAutomata<'a, C>,
+struct AutomataIter<'a, C: AutomataCharacter> {
+    automata: FrozenAutomata<'a, C>,
     index_stack: Vec<SlabIndex>,
     character_stack: Vec<C>,
 }
 
-impl<'a, C: AutomataCharacter> FusedIterator for BytesAutomataIter<'a, C> {}
+impl<'a, C: AutomataCharacter> FusedIterator for AutomataIter<'a, C> {}
 
-impl<'a, C: AutomataCharacter> Iterator for BytesAutomataIter<'a, C> {
+impl<'a, C: AutomataCharacter> Iterator for AutomataIter<'a, C> {
     type Item = C::String;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -155,13 +155,14 @@ impl<'a, C: AutomataCharacter> Iterator for BytesAutomataIter<'a, C> {
 mod tests {
     use std::str::FromStr;
 
-    use super::BytesAutomata;
+    use super::FrozenAutomata;
     use crate::test_helpers::CharVec;
     use crate::test_helpers::Character;
 
     #[test]
     fn test_contains() {
-        let planets: BytesAutomata<'_, Character> = BytesAutomata::new(&crate::test_helpers::PLANETS_BYTES);
+        let planets: FrozenAutomata<'_, Character> =
+            FrozenAutomata::new(&crate::test_helpers::PLANETS_BYTES);
 
         let pluto = CharVec::from_str("pluto").unwrap();
         let goofy = CharVec::from_str("goofy").unwrap();
@@ -172,9 +173,10 @@ mod tests {
 
     #[test]
     fn test_iter() {
-        let planets: BytesAutomata<'_, Character> = BytesAutomata::new(&crate::test_helpers::PLANETS_BYTES);
+        let planets: FrozenAutomata<'_, Character> =
+            FrozenAutomata::new(&crate::test_helpers::PLANETS_BYTES);
 
-        let v: Vec<_> = planets.iter().map(|x|x.to_string()) .collect();
+        let v: Vec<_> = planets.iter().map(|x| x.to_string()).collect();
 
         let joined = v.join(", ");
 
@@ -183,6 +185,4 @@ mod tests {
             "EARTH, MARS, NEPTUNE, PLUTO, RANDOM, SATURN, SOME, URANUS, VENUS, WORD"
         );
     }
-
-
 }
