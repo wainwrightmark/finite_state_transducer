@@ -1,5 +1,146 @@
 pub mod bytes;
-pub mod mutable;
 pub mod character;
+pub mod mutable;
 pub mod slab_index;
 pub mod structure;
+
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    use std::{fmt::Write, str::FromStr};
+    use crate::character::AutomataCharacter;
+
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct CharVec(Vec<Character>);
+
+    impl CharVec {
+        pub fn iter<'a>(&'a self) -> impl Iterator<Item = Character> + 'a {
+            self.0.iter().cloned()
+        }
+    }
+
+    impl std::fmt::Display for CharVec {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            for x in self.iter(){
+                f.write_char(x.as_char())?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl FromStr for CharVec {
+        type Err = std::convert::Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            let mut v = vec![];
+
+            for c in s.chars() {
+                if let Some(char) = Character::try_from_char(c) {
+                    v.push(char);
+                }
+            }
+
+            Ok(Self(v))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+
+    pub enum Character {
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+        I,
+        J,
+        K,
+        L,
+        M,
+        N,
+        O,
+        P,
+        Q,
+        R,
+        S,
+        T,
+        U,
+        V,
+        W,
+        X,
+        Y,
+        Z,
+    }
+
+    impl std::fmt::Display for Character {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            std::fmt::Write::write_char(f, self.as_char())?;
+
+            Ok(())
+        }
+    }
+
+    impl Character {
+        pub fn as_char(&self) -> char {
+            (('A' as u8) + (self.clone() as u8)) as char
+        }
+
+        pub fn try_from_char(c: char) -> Option<Self> {
+            let c = c as u8;
+
+            for offset in ['A', 'a'] {
+                match c.checked_sub(offset as u8) {
+                    Some(x) => {
+                        if let Some(c) = AutomataCharacter::try_from_u32(x as u32) {
+                            return Some(c);
+                        }
+                    }
+                    None => {}
+                }
+            }
+
+            return None;
+        }
+    }
+
+    impl crate::character::AutomataCharacter for Character {
+        type String = CharVec;
+
+        fn to_u32(&self) -> u32 {
+            *self as u32
+        }
+
+        fn try_from_u32(index: u32) -> Option<Self> {
+            use Character::*;
+            const ARRAY: [Character; 26] = [
+                A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+            ];
+
+            ARRAY.get(index as usize).cloned()
+        }
+
+        fn join<'a>(items: impl Iterator<Item = &'a Self>) -> Self::String {
+
+            CharVec(items.copied().collect())
+        }
+    }
+
+
+    pub const PLANETS_BYTES: &'static [u8] = &[
+        16, 176, 118, 0, 10, 0, 0, 0, 19, 0, 0, 0, 25, 0, 0, 0, 37, 0, 0, 0, 68, 0, 0, 0, 45, 0, 0,
+        0, 56, 0, 0, 0, 64, 0, 0, 0, 78, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 2, 0, 14, 0, 0, 0,
+        0, 0, 8, 0, 16, 0, 0, 0, 128, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 128, 1, 0, 0, 0, 21, 0, 0, 0,
+        0, 0, 2, 0, 23, 0, 0, 0, 0, 0, 4, 0, 18, 0, 0, 0, 16, 0, 0, 0, 27, 0, 0, 0, 0, 128, 0, 0,
+        29, 0, 0, 0, 0, 0, 8, 0, 31, 0, 0, 0, 0, 0, 16, 0, 33, 0, 0, 0, 0, 32, 0, 0, 35, 0, 0, 0,
+        16, 0, 0, 0, 18, 0, 0, 0, 0, 8, 0, 0, 39, 0, 0, 0, 0, 0, 16, 0, 41, 0, 0, 0, 0, 0, 8, 0,
+        43, 0, 0, 0, 0, 64, 0, 0, 18, 0, 0, 0, 1, 64, 0, 0, 48, 0, 0, 0, 66, 0, 0, 0, 0, 0, 8, 0,
+        50, 0, 0, 0, 0, 0, 16, 0, 52, 0, 0, 0, 0, 0, 2, 0, 54, 0, 0, 0, 0, 32, 0, 0, 18, 0, 0, 0,
+        0, 0, 2, 0, 58, 0, 0, 0, 1, 0, 0, 0, 60, 0, 0, 0, 0, 32, 0, 0, 62, 0, 0, 0, 0, 0, 16, 0,
+        23, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 16, 0, 0, 35, 0, 0, 0, 1, 0, 0, 0, 70, 0, 0, 0,
+        0, 32, 0, 0, 72, 0, 0, 0, 8, 0, 0, 0, 74, 0, 0, 0, 0, 64, 0, 0, 76, 0, 0, 0, 0, 16, 0, 0,
+        18, 0, 0, 0, 0, 64, 0, 0, 80, 0, 0, 0, 0, 0, 2, 0, 82, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0,
+    ];
+}

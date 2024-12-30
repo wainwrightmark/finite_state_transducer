@@ -291,13 +291,10 @@ impl<C: AutomataCharacter> WordAutomata<C> {
 }
 
 #[cfg(test)]
-pub mod tests {
-    use std::{
-        convert::Infallible,
-        fmt::{Display, Write},
-        str::FromStr,
-        vec,
-    };
+mod tests {
+    use std::{str::FromStr, vec};
+
+    use crate::test_helpers::*;
 
     use super::*;
     #[test]
@@ -342,7 +339,7 @@ pub mod tests {
     pub fn test_iter() {
         let wa = make_planets();
 
-        let v: Vec<_> = wa.iter().collect();
+        let v: Vec<_> = wa.iter().map(|x|x.to_string()) .collect();
 
         let joined = v.join(", ");
 
@@ -360,7 +357,7 @@ pub mod tests {
         let wa = wa.compress();
         assert_eq!(wa.slab.len(), 38);
 
-        let v: Vec<_> = wa.iter().collect();
+        let v: Vec<_> = wa.iter().map(|x|x.to_string()).collect();
 
         let joined = v.join(", ");
 
@@ -395,118 +392,5 @@ pub mod tests {
                 0
             ]
         )
-    }
-
-    pub struct CharVec(Vec<Character>);
-
-    impl CharVec {
-        pub fn iter<'a>(&'a self) -> impl Iterator<Item = Character> + 'a {
-            self.0.iter().cloned()
-        }
-    }
-
-    impl FromStr for CharVec {
-        type Err = Infallible;
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            let mut v = vec![];
-
-            for c in s.chars() {
-                if let Some(char) = Character::try_from_char(c) {
-                    v.push(char);
-                }
-            }
-
-            Ok(Self(v))
-        }
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-
-    pub enum Character {
-        A,
-        B,
-        C,
-        D,
-        E,
-        F,
-        G,
-        H,
-        I,
-        J,
-        K,
-        L,
-        M,
-        N,
-        O,
-        P,
-        Q,
-        R,
-        S,
-        T,
-        U,
-        V,
-        W,
-        X,
-        Y,
-        Z,
-    }
-
-    impl Display for Character {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_char(self.as_char())?;
-
-            Ok(())
-        }
-    }
-
-    impl Character {
-        pub fn as_char(&self) -> char {
-            (('A' as u8) + (self.clone() as u8)) as char
-        }
-
-        pub fn try_from_char(c: char) -> Option<Self> {
-            let c = c as u8;
-
-            for offset in ['A', 'a'] {
-                match c.checked_sub(offset as u8) {
-                    Some(x) => {
-                        if let Some(c) = AutomataCharacter::try_from_u32(x as u32) {
-                            return Some(c);
-                        }
-                    }
-                    None => {}
-                }
-            }
-
-            return None;
-        }
-    }
-
-    impl crate::character::AutomataCharacter for Character {
-        type String = String;
-
-        fn to_u32(&self) -> u32 {
-            *self as u32
-        }
-
-        fn try_from_u32(index: u32) -> Option<Self> {
-            use Character::*;
-            const ARRAY: [Character; 26] = [
-                A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
-            ];
-
-            ARRAY.get(index as usize).cloned()
-        }
-
-        fn join<'a>(items: impl Iterator<Item = &'a Self>) -> Self::String {
-            let mut r = String::with_capacity(items.size_hint().0);
-
-            for item in items {
-                r.push(item.as_char());
-            }
-
-            r
-        }
     }
 }
