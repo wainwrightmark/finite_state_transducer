@@ -18,9 +18,9 @@ impl<'f, L: Letter, F: FST<L>> FSTIterator<'f, L, F> {
     }
 }
 
-impl<'f, L: Letter, F: FST<L>> FusedIterator for FSTIterator<'f, L, F> {}
+impl<L: Letter, F: FST<L>> FusedIterator for FSTIterator<'_, L, F> {}
 
-impl<'f, L: Letter, F: FST<L>> Iterator for FSTIterator<'f, L, F> {
+impl<L: Letter, F: FST<L>> Iterator for FSTIterator<'_, L, F> {
     type Item = L::String;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -52,7 +52,7 @@ impl<'f, L: Letter, F: FST<L>> Iterator for FSTIterator<'f, L, F> {
             let top = &self.fst.get_state(top_state_index);
 
             if let Some(letter) = self.letter_stack.get(self.index_stack.len() - 1) {
-                if let Some(nsi) = top.try_accept(&letter) {
+                if let Some(nsi) = top.try_accept(letter) {
                     self.index_stack.push(nsi);
                 } else {
                     increment_last(&mut self.index_stack, &mut self.letter_stack);

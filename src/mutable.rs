@@ -40,7 +40,7 @@ pub struct MutableState {
     pub can_terminate: bool,
 }
 
-impl<'s, L: Letter> State<L> for &'s MutableState {
+impl<L: Letter> State<L> for &MutableState {
     fn can_terminate(&self) -> bool {
         self.can_terminate
     }
@@ -62,7 +62,7 @@ impl<L: Letter> FST<L> for MutableFST<L> {
     where
         Self: 's;
 
-    fn get_state<'a>(&'a self, index: FSTIndex) -> Self::State<'a> {
+    fn get_state(&self, index: FSTIndex) -> Self::State<'_> {
         self.slab.get(index.0 as usize).unwrap()
     }
 }

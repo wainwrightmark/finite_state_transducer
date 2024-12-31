@@ -16,7 +16,7 @@ pub struct FrozenState<'s, L: Letter> {
     phantom: PhantomData<L>,
 }
 
-impl<'s, L: Letter> FrozenState<'s, L> {
+impl<L: Letter> FrozenState<'_, L> {
     const CAN_TERMINATE_KEY: u32 = 31;
 
     const fn get_set(&self) -> BitSet32 {
@@ -44,7 +44,7 @@ impl<'s, L: Letter> FrozenState<'s, L> {
     }
 }
 
-impl<'s, L: Letter> State<L> for FrozenState<'s, L> {
+impl<L: Letter> State<L> for FrozenState<'_, L> {
     fn can_terminate(&self) -> bool {
         self.get_set().contains_const(Self::CAN_TERMINATE_KEY)
     }
@@ -69,16 +69,16 @@ impl<'s, L: Letter> State<L> for FrozenState<'s, L> {
     }
 }
 
-impl<'s, L: Letter> FST<L> for FrozenFST<'s, L> {
+impl<L: Letter> FST<L> for FrozenFST<'_, L> {
     type State<'state>
         = FrozenState<'state, L>
     where
         Self: 'state;
 
-    fn get_state<'a>(&'a self, index: FSTIndex) -> Self::State<'a> {
+    fn get_state(&self, index: FSTIndex) -> Self::State<'_> {
         FrozenState {
             index,
-            slice: &self.slice,
+            slice: self.slice,
             phantom: PhantomData,
         }
     }

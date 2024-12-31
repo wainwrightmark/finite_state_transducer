@@ -23,10 +23,10 @@ pub trait FST<L: Letter>: Sized {
     where
         Self: 's;
 
-    fn iter<'a>(&'a self) -> impl FusedIterator<Item = L::String> {
+    fn iter(&self) -> impl FusedIterator<Item = L::String> {
         FSTIterator::new(self)
     }
-    fn contains<'a>(&'a self, iter: impl IntoIterator<Item = L>) -> bool {
+    fn contains(&self, iter: impl IntoIterator<Item = L>) -> bool {
         let mut state = self.get_state(FSTIndex::ZERO);
 
         for l in iter {
@@ -39,7 +39,7 @@ pub trait FST<L: Letter>: Sized {
         state.can_terminate()
     }
 
-    fn get_state<'a>(&'a self, index: FSTIndex) -> Self::State<'a>;
+    fn get_state(&self, index: FSTIndex) -> Self::State<'_>;
 }
 
 pub trait State<L: Letter> {
