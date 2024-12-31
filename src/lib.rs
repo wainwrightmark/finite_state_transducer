@@ -2,7 +2,6 @@ pub mod frozen;
 pub mod index;
 pub mod iterator;
 pub mod mutable;
-pub mod structure;
 
 use index::FSTIndex;
 use iterator::FSTIterator;
