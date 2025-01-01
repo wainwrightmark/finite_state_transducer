@@ -2,6 +2,7 @@ pub mod frozen;
 pub mod index;
 pub mod iterator;
 pub mod mutable;
+pub mod either_fst;
 
 use index::FSTIndex;
 use iterator::FSTIterator;
