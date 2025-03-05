@@ -1,27 +1,29 @@
-use std::iter::FusedIterator;
+use std::{iter::FusedIterator, marker::PhantomData};
 
-use crate::{index::FSTIndex, Letter, State, FST};
+use crate::{index::FSTIndex, Letter, LetterJoiner, State, FST};
 
-pub struct FSTIterator<'f, L: Letter, F: FST<L>> {
+pub struct FSTIterator<'f, L: Letter, F: FST<L>, LJ: LetterJoiner<L>> {
     fst: &'f F,
     index_stack: Vec<FSTIndex>,
     letter_stack: Vec<L>,
+    phantom: PhantomData<LJ>
 }
 
-impl<'f, L: Letter, F: FST<L>> FSTIterator<'f, L, F> {
+impl<'f, L: Letter, F: FST<L>, LJ: LetterJoiner<L>> FSTIterator<'f, L, F, LJ> {
     pub fn new(fst: &'f F) -> Self {
         Self {
             fst,
             index_stack: vec![FSTIndex(0)],
             letter_stack: vec![],
+            phantom: PhantomData
         }
     }
 }
 
-impl<L: Letter, F: FST<L>> FusedIterator for FSTIterator<'_, L, F> {}
+impl<L: Letter, F: FST<L>, LJ: LetterJoiner<L>> FusedIterator for FSTIterator<'_, L, F, LJ> {}
 
-impl<L: Letter, F: FST<L>> Iterator for FSTIterator<'_, L, F> {
-    type Item = L::String;
+impl<L: Letter, F: FST<L>, LJ: LetterJoiner<L>> Iterator for FSTIterator<'_, L, F, LJ> {
+    type Item = LJ::String;
 
     fn next(&mut self) -> Option<Self::Item> {
         fn increment_last<C: Letter>(
@@ -58,8 +60,8 @@ impl<L: Letter, F: FST<L>> Iterator for FSTIterator<'_, L, F> {
                     increment_last(&mut self.index_stack, &mut self.letter_stack);
                 }
             } else {
-                let result: Option<L::String> = if top.can_terminate() {
-                    let word = L::join(self.letter_stack.iter());
+                let result: Option<LJ::String> = if top.can_terminate() {
+                    let word = LJ::join(self.letter_stack.iter());
                     Some(word)
                 } else {
                     None

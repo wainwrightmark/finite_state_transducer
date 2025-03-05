@@ -1,20 +1,22 @@
+pub mod either_fst;
 pub mod frozen;
 pub mod index;
 pub mod iterator;
 pub mod mutable;
-pub mod either_fst;
 
 use index::FSTIndex;
 use iterator::FSTIterator;
 use std::iter::FusedIterator;
 
-pub trait Letter: Sized {
-    type String;
-
+pub trait Letter: Sized + 'static {
     fn try_from_u32(key: u32) -> Option<Self>;
     fn to_u32(&self) -> u32;
+}
 
-    fn join<'a>(items: impl Iterator<Item = &'a Self>) -> Self::String
+pub trait LetterJoiner<L: Letter> {
+    type String;
+
+    fn join<'a>(items: impl Iterator<Item = &'a L>) -> Self::String
     where
         Self: 'a;
 }
@@ -24,8 +26,8 @@ pub trait FST<L: Letter>: Sized {
     where
         Self: 's;
 
-    fn iter(&self) -> impl FusedIterator<Item = L::String> {
-        FSTIterator::new(self)
+    fn iter<LJ: LetterJoiner<L>>(&self) -> impl FusedIterator<Item = LJ::String> {
+        FSTIterator::<L, Self, LJ>::new(self)
     }
     fn contains(&self, iter: impl IntoIterator<Item = L>) -> bool {
         let mut state = self.get_state(FSTIndex::ZERO);
@@ -51,7 +53,7 @@ pub trait State<L: Letter> {
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
-    use crate::Letter;
+    use crate::{Letter, LetterJoiner};
     use std::{fmt::Write, str::FromStr};
 
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -149,8 +151,6 @@ pub(crate) mod test_helpers {
     }
 
     impl crate::Letter for Character {
-        type String = CharVec;
-
         fn to_u32(&self) -> u32 {
             *self as u32
         }
@@ -163,8 +163,14 @@ pub(crate) mod test_helpers {
 
             ARRAY.get(index as usize).cloned()
         }
+    }
 
-        fn join<'a>(items: impl Iterator<Item = &'a Self>) -> Self::String {
+    pub struct CharacterJoiner;
+
+    impl LetterJoiner<Character> for CharacterJoiner {
+        type String = CharVec;
+
+        fn join<'a>(items: impl Iterator<Item = &'a Character>) -> Self::String {
             CharVec(items.copied().collect())
         }
     }

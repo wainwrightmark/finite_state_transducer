@@ -259,7 +259,7 @@ mod tests {
     pub fn test_iter() {
         let wa = make_planets();
 
-        let v: Vec<_> = wa.iter().map(|x| x.to_string()).collect();
+        let v: Vec<_> = wa.iter::<CharacterJoiner>().map(|x| x.to_string()).collect();
 
         let joined = v.join(", ");
 
@@ -277,7 +277,7 @@ mod tests {
         let wa = wa.compress();
         assert_eq!(wa.slab.len(), 38);
 
-        let v: Vec<_> = wa.iter().map(|x| x.to_string()).collect();
+        let v: Vec<_> = wa.iter::<CharacterJoiner>().map(|x| x.to_string()).collect();
 
         let joined = v.join(", ");
 

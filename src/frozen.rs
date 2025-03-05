@@ -101,6 +101,7 @@ mod tests {
     use super::FrozenFST;
     use crate::test_helpers::CharVec;
     use crate::test_helpers::Character;
+    use crate::test_helpers::CharacterJoiner;
     use crate::FST;
 
     #[test]
@@ -118,7 +119,7 @@ mod tests {
     fn test_iter() {
         let planets: FrozenFST<'_, Character> = FrozenFST::new(crate::test_helpers::PLANETS_BYTES);
 
-        let v: Vec<_> = planets.iter().map(|x| x.to_string()).collect();
+        let v: Vec<_> = planets.iter::<CharacterJoiner>().map(|x| x.to_string()).collect();
 
         let joined = v.join(", ");
 
