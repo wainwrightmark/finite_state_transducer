@@ -1,9 +1,8 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    marker::PhantomData,
+    collections::{BTreeMap, HashMap, HashSet}, iter::FusedIterator, marker::PhantomData
 };
 
-use crate::{index::FSTIndex, Letter, State, FST};
+use crate::{index::FSTIndex, traversal::TraversalItem, Letter, State, FST};
 
 #[derive(Debug, PartialEq)]
 pub struct MutableFST<L: Letter> {
@@ -70,7 +69,7 @@ impl<L: Letter> FST<L> for MutableFST<L> {
 impl<C: Letter> MutableFST<C> {
     /// Returns true if the word was added
     pub fn add_word(&mut self, iterator: impl IntoIterator<Item = C>) -> bool {
-        let mut state_index: FSTIndex = FSTIndex(0);
+        let mut state_index: FSTIndex = FSTIndex::ZERO;
 
         for c in iterator {
             let c = c.to_u32();
@@ -209,6 +208,54 @@ impl<C: Letter> MutableFST<C> {
 
         bytes
     }
+
+    pub fn traverse<'m>(&'m self)-> impl Iterator<Item = TraversalItem<C>> + use<'m, C>{
+        MutableTraversalIterator::new(self)
+    }
+}
+
+
+struct MutableTraversalIterator<'m, L : Letter>{
+    pub fst: &'m MutableFST<L>,
+    pub stack: Vec<(FSTIndex, u32)>
+}
+
+impl<'m, L: Letter> FusedIterator for MutableTraversalIterator<'m, L> {}
+
+impl<'m, L: Letter> MutableTraversalIterator<'m, L> {
+    fn new(fst: &'m MutableFST<L>) -> Self {
+        Self { fst, stack: vec![(FSTIndex::ZERO, 0)] }
+    }
+}
+
+impl<'m, L: Letter> Iterator for MutableTraversalIterator<'m, L>{
+    type Item = TraversalItem<L>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+        loop{
+            
+            let (top_index, next_letter) = self.stack.last_mut()?;
+
+            let state = self.fst.slab.get(top_index.0 as usize)?;
+
+            match state.map.range((*next_letter)..).next(){
+                Some((nl, next_index)) => {
+                    *next_letter = *nl + 1;
+                    self.stack.push((*next_index, 0));
+                    let next_state = self.fst.slab.get(next_index.0 as usize)?;
+                    let nl = L::try_from_u32(*nl)?;
+                    return Some(TraversalItem::Letter { letter: nl, can_be_end_of_word: next_state.can_terminate });
+
+                },
+                None => {
+                    self.stack.pop();
+                    return Some(TraversalItem::Backtrack);
+                },
+            }
+        }
+
+    }
 }
 
 #[cfg(test)]
@@ -242,7 +289,7 @@ mod tests {
         assert!(wa.contains(mark.iter()));
     }
 
-    fn make_planets() -> MutableFST<Character> {
+    fn make_test_fst() -> MutableFST<Character> {
         let mut wa: MutableFST<Character> = MutableFST::default();
 
         for word in [
@@ -254,10 +301,22 @@ mod tests {
         }
         wa
     }
+    
+    fn make_chess() -> MutableFST<Character> {
+        let mut wa: MutableFST<Character> = MutableFST::default();
+
+        for word in [
+            "king", "queen", "pawn", "bishop", "knight", "rook"
+        ] {
+            let word = CharVec::from_str(word).unwrap();
+            wa.add_word(word.iter());
+        }
+        wa
+    }
 
     #[test]
     pub fn test_iter() {
-        let wa = make_planets();
+        let wa = make_test_fst();
 
         let v: Vec<_> = wa.iter::<CharacterJoiner>().map(|x| x.to_string()).collect();
 
@@ -271,7 +330,7 @@ mod tests {
 
     #[test]
     pub fn test_compress_then_iter() {
-        let wa = make_planets();
+        let wa = make_test_fst();
 
         assert_eq!(wa.slab.len(), 52);
         let wa = wa.compress();
@@ -289,10 +348,33 @@ mod tests {
 
     #[test]
     pub fn test_to_bytes() {
-        let wa = make_planets();
+        let wa = make_test_fst();
         let wa = wa.compress();
         let bytes = wa.freeze();
 
         assert_eq!(bytes, PLANETS_BYTES)
+    }
+
+    #[test]
+    pub fn test_traversal(){
+        let empty_fst = MutableFST::<Character>::default();
+
+        assert_eq!(empty_fst.traverse().collect::<Vec<TraversalItem<Character>>>(), vec![TraversalItem::Backtrack]);
+
+        let wa = make_chess();
+
+
+        let expected = "BISHOP!^^^^^^KING!^^^NIGHT!^^^^^^PAWN!^^^^QUEEN!^^^^^ROOK!^^^^^
+        ";
+
+        let actual = wa.traverse().map(|x|{
+            match x{
+                TraversalItem::Backtrack => "^".to_string(),
+                TraversalItem::Letter { letter, can_be_end_of_word: false } => letter.as_char().to_string(),
+                TraversalItem::Letter { letter, can_be_end_of_word: true } => format!("{}!", letter.as_char()),
+            }
+        }).collect::<Vec<String>>().join("");
+
+        assert_eq!(actual, expected)
     }
 }
